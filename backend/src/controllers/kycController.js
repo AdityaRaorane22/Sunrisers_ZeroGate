@@ -99,10 +99,41 @@ export const getPendingVerifications = async (req, res) => {
     }
 };
 
+// Check if user meets scheme eligibility
+const checkEligibility = (user, scheme) => {
+    const criteria = scheme.eligibilityCriteria;
+    const userDetails = user.personalDetails;
+
+    // Calculate age
+    const age = Math.floor((new Date() - new Date(userDetails.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000));
+
+    // Check min age
+    if (criteria.minAge && age < criteria.minAge) {
+        return false;
+    }
+
+    // Check max age
+    if (criteria.maxAge && age > criteria.maxAge) {
+        return false;
+    }
+
+    // Check nationality
+    if (criteria.nationality && userDetails.nationality !== criteria.nationality) {
+        return false;
+    }
+
+    // Check ID type
+    if (criteria.idType && userDetails.idType !== criteria.idType) {
+        return false;
+    }
+
+    return true;
+};
+
 // Verify user (Admin)
 export const verifyUser = async (req, res) => {
     try {
-        const { userId, action, tier, rejectionReason, adminId } = req.body;
+        const { userId, action, selectedSchemes, rejectionReason, adminId } = req.body;
 
         if (!userId || !action) {
             return res.status(400).json({ error: 'Missing userId or action' });
@@ -122,16 +153,53 @@ export const verifyUser = async (req, res) => {
         }
 
         if (action === 'approve') {
-            if (!tier || tier < 1 || tier > 3) {
-                return res.status(400).json({ error: 'Valid tier (1-3) required for approval' });
+            if (!selectedSchemes || selectedSchemes.length === 0) {
+                return res.status(400).json({ error: 'At least one scheme must be selected for approval' });
+            }
+
+            // Validate eligibility for each selected scheme
+            const schemes = await Scheme.find({ schemeId: { $in: selectedSchemes } });
+            const eligibleSchemes = [];
+            const ineligibleSchemes = [];
+
+            for (const scheme of schemes) {
+                if (checkEligibility(user, scheme)) {
+                    eligibleSchemes.push(scheme.schemeId);
+                } else {
+                    ineligibleSchemes.push({
+                        schemeId: scheme.schemeId,
+                        schemeName: scheme.schemeName,
+                        reason: scheme.eligibilityCriteria.description
+                    });
+                }
+            }
+
+            if (eligibleSchemes.length === 0) {
+                return res.status(400).json({
+                    error: 'User does not meet eligibility criteria for any selected scheme',
+                    ineligibleSchemes
+                });
             }
 
             user.verificationStatus = 'approved';
-            user.tier = tier;
+            user.approvedSchemes = eligibleSchemes;
+            user.tier = Math.max(...schemes.map(s => s.requiredTier)); // Set tier to highest required
             user.verifiedBy = adminId || 'admin';
             user.verifiedAt = new Date();
 
-            console.log(`✅ User ${userId} approved with Tier ${tier}`);
+            console.log(`✅ User ${userId} approved for schemes: ${eligibleSchemes.join(', ')}`);
+
+            await user.save();
+
+            res.json({
+                success: true,
+                userId,
+                verificationStatus: user.verificationStatus,
+                approvedSchemes: eligibleSchemes,
+                ineligibleSchemes: ineligibleSchemes.length > 0 ? ineligibleSchemes : undefined,
+                tier: user.tier,
+                message: `User approved for ${eligibleSchemes.length} scheme(s)`
+            });
         } else {
             user.verificationStatus = 'rejected';
             user.rejectionReason = rejectionReason || 'Not specified';
@@ -139,17 +207,16 @@ export const verifyUser = async (req, res) => {
             user.verifiedAt = new Date();
 
             console.log(`❌ User ${userId} rejected: ${rejectionReason}`);
+
+            await user.save();
+
+            res.json({
+                success: true,
+                userId,
+                verificationStatus: user.verificationStatus,
+                message: `User rejected`
+            });
         }
-
-        await user.save();
-
-        res.json({
-            success: true,
-            userId,
-            verificationStatus: user.verificationStatus,
-            tier: user.tier,
-            message: `User ${action}ed successfully`
-        });
 
     } catch (error) {
         console.error('Verify user error:', error);
@@ -162,17 +229,17 @@ export const getSchemes = async (req, res) => {
     try {
         const { userId } = req.query;
 
-        const schemes = await Scheme.find({ isActive: true }).sort({ requiredTier: 1 });
+        const schemes = await Scheme.find({ isActive: true }).sort({ schemeId: 1 });
 
-        // If userId provided, filter by user's tier
+        // If userId provided, filter by user's approved schemes
         if (userId) {
             const user = await User.findOne({ userId });
             if (user && user.verificationStatus === 'approved') {
-                const eligibleSchemes = schemes.filter(s => s.requiredTier <= user.tier);
+                const approvedSchemesList = schemes.filter(s => user.approvedSchemes.includes(s.schemeId));
                 return res.json({
                     success: true,
-                    userTier: user.tier,
-                    schemes: eligibleSchemes
+                    approvedSchemes: user.approvedSchemes,
+                    schemes: approvedSchemesList
                 });
             }
         }
@@ -208,6 +275,7 @@ export const getUserStatus = async (req, res) => {
                 email: user.personalDetails.email,
                 commitment: user.commitment,
                 verificationStatus: user.verificationStatus,
+                approvedSchemes: user.approvedSchemes,
                 tier: user.tier,
                 verifiedAt: user.verifiedAt,
                 rejectionReason: user.rejectionReason,

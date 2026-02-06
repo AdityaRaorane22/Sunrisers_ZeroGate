@@ -14,9 +14,10 @@ interface UserData {
     email: string;
     commitment: string;
     verificationStatus: string;
+    approvedSchemes?: string[];
     tier: number;
-    verifiedAt: string | null;
-    rejectionReason: string | null;
+    verifiedAt?: string;
+    rejectionReason?: string;
     createdAt: string;
 }
 
@@ -41,6 +42,12 @@ export const UserStatus: React.FC<Props> = ({ userId, onProofGeneration }) => {
             console.error('Error fetching user status:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleProceedToSchemes = () => {
+        if (userData && secret) {
+            onProofGeneration(userData.userId, secret, userData.tier);
         }
     };
 
@@ -131,25 +138,45 @@ export const UserStatus: React.FC<Props> = ({ userId, onProofGeneration }) => {
                 )}
 
                 {userData.verificationStatus === 'approved' && (
-                    <div className="status-message approved">
-                        <h3>✅ Verified Successfully!</h3>
-                        <p>You have been approved with <strong>Tier {userData.tier}</strong> access.</p>
-                        <p>You can now generate zero-knowledge proofs for eligible schemes.</p>
+                    <div className="status-card approved">
+                        <div className="status-icon">✅</div>
+                        <h3>Verification Approved!</h3>
+                        <div className="user-info">
+                            <p><strong>Name:</strong> {userData.fullName}</p>
+                            <p><strong>Email:</strong> {userData.email}</p>
+                            <p><strong>Verified:</strong> {new Date(userData.verifiedAt!).toLocaleDateString()}</p>
+                            <p><strong>Tier:</strong> <span className={`tier-badge tier-${userData.tier}`}>Tier {userData.tier}</span></p>
+                        </div>
 
-                        <div className="proof-generation-section">
-                            <h4>Generate Proof</h4>
-                            <p>Enter your secret to generate proofs:</p>
+                        <div className="approved-schemes-section">
+                            <h4>📋 Approved Schemes ({userData.approvedSchemes?.length || 0})</h4>
+                            {userData.approvedSchemes && userData.approvedSchemes.length > 0 ? (
+                                <div className="schemes-list">
+                                    {userData.approvedSchemes.map((schemeId: string) => (
+                                        <div key={schemeId} className="scheme-badge">
+                                            {schemeId}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="no-schemes">No schemes approved yet</p>
+                            )}
+                        </div>
+
+                        <div className="secret-input-section">
+                            <h4>🔑 Enter Your Secret to Access Schemes</h4>
+                            <p className="hint">Enter the secret you saved during registration</p>
                             <input
                                 type="password"
-                                placeholder="Enter your secret..."
+                                placeholder="Enter your secret key..."
                                 value={secret}
                                 onChange={(e) => setSecret(e.target.value)}
                                 className="secret-input"
                             />
                             <button
-                                className="btn-generate-proof"
-                                onClick={() => onProofGeneration(userData.userId, secret, userData.tier)}
+                                onClick={handleProceedToSchemes}
                                 disabled={!secret}
+                                className="btn-proceed"
                             >
                                 Go to Scheme Selection
                             </button>

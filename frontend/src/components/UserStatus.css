@@ -166,6 +166,43 @@
     box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
 }
 
+.btn-genera.btn-proceed:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.approved-schemes-section {
+    margin: 25px 0;
+    padding: 20px;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 15px;
+}
+
+.approved-schemes-section h4 {
+    margin: 0 0 15px 0;
+    color: #2d3748;
+}
+
+.schemes-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.scheme-badge {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 20px;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.no-schemes {
+    color: #718096;
+    font-style: italic;
+}
+
 .btn-generate-proof:disabled {
     opacity: 0.5;
     cursor: not-allowed;

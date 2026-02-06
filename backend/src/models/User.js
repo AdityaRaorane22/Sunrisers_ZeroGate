@@ -71,6 +71,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    approvedSchemes: {
+        type: [String], // Array of scheme IDs
+        default: []
+    },
     tier: {
         type: Number,
         min: 0,

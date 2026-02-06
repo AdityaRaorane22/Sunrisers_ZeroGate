@@ -3,57 +3,112 @@ import { connectDB } from '../config/database.js';
 
 const schemes = [
     {
-        schemeId: 'SCHEME_GOV_BENEFITS',
-        schemeName: 'Government Benefits Verification',
-        description: 'Verify eligibility for government benefits without revealing personal details. Proves age > 18 and citizenship.',
+        schemeId: 'SCHEME_001',
+        schemeName: 'Government Benefits (Age 18+)',
+        description: 'Access government benefits. Requires age 18 or above.',
         requiredTier: 1,
         eligibilityCriteria: {
             minAge: 18,
-            requiresCitizenship: true
+            description: 'Must be 18 years or older'
         },
         isActive: true
     },
     {
-        schemeId: 'SCHEME_FINANCIAL_SERVICES',
-        schemeName: 'Financial Services KYC',
-        description: 'Access financial services with privacy. Proves age > 21, income range, and credit worthiness without exact values.',
+        schemeId: 'SCHEME_002',
+        schemeName: 'Indian Citizen Services',
+        description: 'Services exclusively for Indian citizens.',
+        requiredTier: 1,
+        eligibilityCriteria: {
+            nationality: 'India',
+            description: 'Must be an Indian citizen'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_003',
+        schemeName: 'Senior Citizen Benefits (Age 60+)',
+        description: 'Special benefits for senior citizens.',
+        requiredTier: 1,
+        eligibilityCriteria: {
+            minAge: 60,
+            description: 'Must be 60 years or older'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_004',
+        schemeName: 'Financial Services (Age 21+)',
+        description: 'Access to banking and financial services.',
         requiredTier: 2,
         eligibilityCriteria: {
             minAge: 21,
-            requiresIncomeProof: true,
-            requiresCreditCheck: true
+            description: 'Must be 21 years or older'
         },
         isActive: true
     },
     {
-        schemeId: 'SCHEME_PREMIUM_SERVICES',
-        schemeName: 'Premium Services Access',
-        description: 'Access premium services with complete anonymity. Proves membership duration, transaction history, and reputation.',
-        requiredTier: 3,
-        eligibilityCriteria: {
-            minMembershipDays: 90,
-            minTransactions: 10,
-            minReputationScore: 80
-        },
-        isActive: true
-    },
-    {
-        schemeId: 'SCHEME_AGE_VERIFICATION',
-        schemeName: 'Age Verification',
-        description: 'Simple age verification for age-restricted content. Proves age > 18 without revealing exact date of birth.',
-        requiredTier: 1,
-        eligibilityCriteria: {
-            minAge: 18
-        },
-        isActive: true
-    },
-    {
-        schemeId: 'SCHEME_INCOME_VERIFICATION',
-        schemeName: 'Income Range Verification',
-        description: 'Verify income falls within a range without revealing exact amount. Useful for loan applications.',
+        schemeId: 'SCHEME_005',
+        schemeName: 'International Travel Verification',
+        description: 'Verification for international travel services.',
         requiredTier: 2,
         eligibilityCriteria: {
-            requiresIncomeProof: true
+            idType: 'passport',
+            description: 'Must have a valid passport'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_006',
+        schemeName: 'Driver License Holders',
+        description: 'Services for licensed drivers.',
+        requiredTier: 1,
+        eligibilityCriteria: {
+            idType: 'driverLicense',
+            description: 'Must have a valid driver\'s license'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_007',
+        schemeName: 'Premium Services (Age 25+)',
+        description: 'Premium tier services for mature users.',
+        requiredTier: 3,
+        eligibilityCriteria: {
+            minAge: 25,
+            description: 'Must be 25 years or older'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_008',
+        schemeName: 'Youth Programs (Age 18-30)',
+        description: 'Special programs for young adults.',
+        requiredTier: 1,
+        eligibilityCriteria: {
+            minAge: 18,
+            maxAge: 30,
+            description: 'Must be between 18 and 30 years old'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_009',
+        schemeName: 'National ID Holders',
+        description: 'Services requiring national ID verification.',
+        requiredTier: 1,
+        eligibilityCriteria: {
+            idType: 'nationalId',
+            description: 'Must have a valid national ID'
+        },
+        isActive: true
+    },
+    {
+        schemeId: 'SCHEME_010',
+        schemeName: 'Universal Access',
+        description: 'Basic services available to all verified users.',
+        requiredTier: 1,
+        eligibilityCriteria: {
+            description: 'All verified users eligible'
         },
         isActive: true
     }

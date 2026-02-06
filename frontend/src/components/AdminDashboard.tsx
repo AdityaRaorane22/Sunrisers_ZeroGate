@@ -22,11 +22,26 @@ interface User {
     createdAt: string;
 }
 
+interface Scheme {
+    _id: string;
+    schemeId: string;
+    schemeName: string;
+    description: string;
+    eligibilityCriteria: {
+        minAge?: number;
+        maxAge?: number;
+        nationality?: string;
+        idType?: string;
+        description: string;
+    };
+}
+
 export const AdminDashboard: React.FC = () => {
     const [pendingUsers, setPendingUsers] = useState<User[]>([]);
+    const [schemes, setSchemes] = useState<Scheme[]>([]);
     const [loading, setLoading] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
-    const [tier, setTier] = useState(1);
+    const [selectedSchemes, setSelectedSchemes] = useState<string[]>([]);
     const [rejectionReason, setRejectionReason] = useState('');
 
     const fetchPendingUsers = async () => {
@@ -44,12 +59,50 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
+    const fetchSchemes = async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/kyc/schemes`);
+            const data = await response.json();
+            if (data.success) {
+                setSchemes(data.schemes);
+            }
+        } catch (error) {
+            console.error('Error fetching schemes:', error);
+        }
+    };
+
     useEffect(() => {
         fetchPendingUsers();
+        fetchSchemes();
     }, []);
+
+    const handleSchemeToggle = (schemeId: string) => {
+        setSelectedSchemes(prev =>
+            prev.includes(schemeId)
+                ? prev.filter(id => id !== schemeId)
+                : [...prev, schemeId]
+        );
+    };
+
+    const checkUserEligibility = (user: User, scheme: Scheme): boolean => {
+        const criteria = scheme.eligibilityCriteria;
+        const age = Math.floor((new Date().getTime() - new Date(user.personalDetails.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+
+        if (criteria.minAge && age < criteria.minAge) return false;
+        if (criteria.maxAge && age > criteria.maxAge) return false;
+        if (criteria.nationality && user.personalDetails.nationality !== criteria.nationality) return false;
+        if (criteria.idType && user.personalDetails.idType !== criteria.idType) return false;
+
+        return true;
+    };
 
     const handleVerify = async (action: 'approve' | 'reject') => {
         if (!selectedUser) return;
+
+        if (action === 'approve' && selectedSchemes.length === 0) {
+            alert('Please select at least one scheme to approve');
+            return;
+        }
 
         try {
             const response = await fetch(`${API_URL}/api/kyc/verify`, {
@@ -60,7 +113,7 @@ export const AdminDashboard: React.FC = () => {
                 body: JSON.stringify({
                     userId: selectedUser.userId,
                     action,
-                    tier: action === 'approve' ? tier : undefined,
+                    selectedSchemes: action === 'approve' ? selectedSchemes : undefined,
                     rejectionReason: action === 'reject' ? rejectionReason : undefined,
                     adminId: 'ADMIN_001'
                 }),
@@ -68,10 +121,17 @@ export const AdminDashboard: React.FC = () => {
 
             const data = await response.json();
             if (data.success) {
-                alert(`User ${action}ed successfully!`);
+                if (data.ineligibleSchemes && data.ineligibleSchemes.length > 0) {
+                    alert(`User approved for ${data.approvedSchemes.length} scheme(s).\n\nIneligible for:\n${data.ineligibleSchemes.map((s: any) => `- ${s.schemeName}: ${s.reason}`).join('\n')}`);
+                } else {
+                    alert(`User ${action}ed successfully!`);
+                }
                 setSelectedUser(null);
+                setSelectedSchemes([]);
                 setRejectionReason('');
                 fetchPendingUsers();
+            } else {
+                alert('Error: ' + data.error);
             }
         } catch (error) {
             console.error('Error verifying user:', error);
@@ -107,15 +167,19 @@ export const AdminDashboard: React.FC = () => {
                                 <div className="user-details">
                                     <p><strong>Email:</strong> {user.personalDetails.email}</p>
                                     <p><strong>Phone:</strong> {user.personalDetails.phone}</p>
+                                    <p><strong>Age:</strong> {Math.floor((new Date().getTime() - new Date(user.personalDetails.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years</p>
                                     <p><strong>Nationality:</strong> {user.personalDetails.nationality}</p>
                                     <p><strong>ID Type:</strong> {user.personalDetails.idType}</p>
                                     <p><strong>Registered:</strong> {new Date(user.createdAt).toLocaleDateString()}</p>
                                 </div>
                                 <button
                                     className="btn-review"
-                                    onClick={() => setSelectedUser(user)}
+                                    onClick={() => {
+                                        setSelectedUser(user);
+                                        setSelectedSchemes([]);
+                                    }}
                                 >
-                                    Review Details
+                                    Review & Assign Schemes
                                 </button>
                             </div>
                         ))}
@@ -125,80 +189,63 @@ export const AdminDashboard: React.FC = () => {
 
             {selectedUser && (
                 <div className="modal-overlay" onClick={() => setSelectedUser(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-content scheme-modal" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>Review Application</h3>
+                            <h3>Assign Schemes to {selectedUser.personalDetails.fullName}</h3>
                             <button className="btn-close" onClick={() => setSelectedUser(null)}>×</button>
                         </div>
 
                         <div className="modal-body">
-                            <div className="detail-section">
-                                <h4>Personal Information</h4>
-                                <div className="detail-grid">
-                                    <div className="detail-item">
-                                        <label>Full Name:</label>
-                                        <span>{selectedUser.personalDetails.fullName}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>Email:</label>
-                                        <span>{selectedUser.personalDetails.email}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>Phone:</label>
-                                        <span>{selectedUser.personalDetails.phone}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>Date of Birth:</label>
-                                        <span>{new Date(selectedUser.personalDetails.dateOfBirth).toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="detail-item full-width">
-                                        <label>Address:</label>
-                                        <span>{selectedUser.personalDetails.address}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>Nationality:</label>
-                                        <span>{selectedUser.personalDetails.nationality}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>ID Type:</label>
-                                        <span>{selectedUser.personalDetails.idType}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>ID Number:</label>
-                                        <span>{selectedUser.personalDetails.idNumber}</span>
-                                    </div>
-                                    <div className="detail-item">
-                                        <label>User ID:</label>
-                                        <span className="mono">{selectedUser.userId}</span>
-                                    </div>
-                                    <div className="detail-item full-width">
-                                        <label>Commitment:</label>
-                                        <span className="mono small">{selectedUser.commitment}</span>
-                                    </div>
+                            <div className="user-summary">
+                                <p><strong>Age:</strong> {Math.floor((new Date().getTime() - new Date(selectedUser.personalDetails.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years</p>
+                                <p><strong>Nationality:</strong> {selectedUser.personalDetails.nationality}</p>
+                                <p><strong>ID Type:</strong> {selectedUser.personalDetails.idType}</p>
+                            </div>
+
+                            <div className="schemes-section">
+                                <h4>Select Schemes (Check eligibility criteria)</h4>
+                                <div className="schemes-list">
+                                    {schemes.map((scheme) => {
+                                        const isEligible = checkUserEligibility(selectedUser, scheme);
+                                        return (
+                                            <div key={scheme._id} className={`scheme-checkbox-item ${!isEligible ? 'ineligible' : ''}`}>
+                                                <label>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedSchemes.includes(scheme.schemeId)}
+                                                        onChange={() => handleSchemeToggle(scheme.schemeId)}
+                                                    />
+                                                    <div className="scheme-info">
+                                                        <strong>{scheme.schemeName}</strong>
+                                                        <p className="scheme-desc">{scheme.description}</p>
+                                                        <p className="eligibility-criteria">
+                                                            {isEligible ? '✅' : '❌'} {scheme.eligibilityCriteria.description}
+                                                        </p>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
                             <div className="action-section">
                                 <div className="approve-section">
-                                    <h4>✅ Approve</h4>
-                                    <div className="tier-selector">
-                                        <label>Assign Tier:</label>
-                                        <select value={tier} onChange={(e) => setTier(Number(e.target.value))}>
-                                            <option value={1}>Tier 1 - Basic</option>
-                                            <option value={2}>Tier 2 - Standard</option>
-                                            <option value={3}>Tier 3 - Premium</option>
-                                        </select>
-                                    </div>
+                                    <h4>✅ Approve with Selected Schemes</h4>
+                                    <p className="selected-count">
+                                        {selectedSchemes.length} scheme(s) selected
+                                    </p>
                                     <button
                                         className="btn-approve"
                                         onClick={() => handleVerify('approve')}
+                                        disabled={selectedSchemes.length === 0}
                                     >
-                                        Approve with Tier {tier}
+                                        Approve User
                                     </button>
                                 </div>
 
                                 <div className="reject-section">
-                                    <h4>❌ Reject</h4>
+                                    <h4>❌ Reject Application</h4>
                                     <textarea
                                         placeholder="Reason for rejection..."
                                         value={rejectionReason}

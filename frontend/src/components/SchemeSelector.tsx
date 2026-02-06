@@ -9,27 +9,45 @@ interface Scheme {
     schemeName: string;
     description: string;
     requiredTier: number;
-    isActive: boolean;
+    eligibilityCriteria: {
+        description: string;
+    };
 }
 
-interface Props {
+interface SchemeSelectorProps {
     userId: string;
     userSecret: string;
     userTier: number;
 }
 
-export const SchemeSelector: React.FC<Props> = ({ userId, userSecret, userTier }) => {
+export const SchemeSelector: React.FC<SchemeSelectorProps> = ({ userId, userSecret, userTier }) => {
     const [schemes, setSchemes] = useState<Scheme[]>([]);
-    const [selectedScheme, setSelectedScheme] = useState<Scheme | null>(null);
     const [loading, setLoading] = useState(false);
-    const [proofGenerated, setProofGenerated] = useState(false);
-    const [proofData, setProofData] = useState<any>(null);
+    const [accessGranted, setAccessGranted] = useState<string | null>(null);
+    const [countdown, setCountdown] = useState(60);
 
     useEffect(() => {
         fetchSchemes();
     }, [userId]);
 
+    useEffect(() => {
+        let timer: number;
+        if (accessGranted && countdown > 0) {
+            timer = window.setInterval(() => {
+                setCountdown(prev => {
+                    if (prev <= 1) {
+                        setAccessGranted(null);
+                        return 60;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }
+        return () => window.clearInterval(timer);
+    }, [accessGranted, countdown]);
+
     const fetchSchemes = async () => {
+        setLoading(true);
         try {
             const response = await fetch(`${API_URL}/api/kyc/schemes?userId=${userId}`);
             const data = await response.json();
@@ -38,41 +56,29 @@ export const SchemeSelector: React.FC<Props> = ({ userId, userSecret, userTier }
             }
         } catch (error) {
             console.error('Error fetching schemes:', error);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const generateProof = async () => {
-        if (!selectedScheme) return;
-
+    const handleApplyToScheme = async (scheme: Scheme) => {
         setLoading(true);
         try {
-            // Get Merkle proof from backend
-            const merkleResponse = await fetch(`${API_URL}/api/get-merkle-proof`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    commitment: await getCommitment()
-                }),
-            });
-
-            const merkleData = await merkleResponse.json();
-
-            // In a real implementation, this would generate a ZK proof using snarkjs
-            // For now, we'll create a mock proof structure
+            // Generate mock proof (in production, use real ZK proof generation)
             const mockProof = {
-                pi_a: ['0x' + Math.random().toString(16).slice(2), '0x' + Math.random().toString(16).slice(2)],
-                pi_b: [['0x1', '0x2'], ['0x3', '0x4']],
-                pi_c: ['0x' + Math.random().toString(16).slice(2), '0x' + Math.random().toString(16).slice(2)],
+                pi_a: ["123", "456", "1"],
+                pi_b: [["789", "012"], ["345", "678"], ["1", "0"]],
+                pi_c: ["901", "234", "1"],
+                protocol: "groth16",
+                curve: "bn128"
             };
 
-            const publicSignals = {
-                root: merkleData.root,
-                nullifier: '0x' + Math.random().toString(16).slice(2),
-                requiredTier: selectedScheme.requiredTier,
-                schemeId: selectedScheme.schemeId
+            const mockPublicSignals = {
+                commitment: "mock_commitment",
+                schemeId: scheme.schemeId
             };
+
+            const nullifier = `NULLIFIER_${userId}_${scheme.schemeId}_${Date.now()}`;
 
             // Save proof to backend
             const saveResponse = await fetch(`${API_URL}/api/kyc/save-proof`, {
@@ -82,115 +88,67 @@ export const SchemeSelector: React.FC<Props> = ({ userId, userSecret, userTier }
                 },
                 body: JSON.stringify({
                     userId,
-                    schemeId: selectedScheme.schemeId,
+                    schemeId: scheme.schemeId,
                     proof: mockProof,
-                    publicSignals,
-                    nullifier: publicSignals.nullifier
+                    publicSignals: mockPublicSignals,
+                    nullifier
                 }),
             });
 
             const saveData = await saveResponse.json();
-
             if (saveData.success) {
-                setProofData({ proof: mockProof, publicSignals, proofId: saveData.proofId });
-                setProofGenerated(true);
+                // Validate proof for access
+                const validateResponse = await fetch(`${API_URL}/api/kyc/validate-proof`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        nullifier,
+                        schemeId: scheme.schemeId
+                    }),
+                });
+
+                const validateData = await validateResponse.json();
+                if (validateData.success) {
+                    setAccessGranted(scheme.schemeName);
+                    setCountdown(60);
+                } else {
+                    alert('Proof validation failed: ' + validateData.error);
+                }
             } else {
                 alert('Error saving proof: ' + saveData.error);
             }
-
         } catch (error) {
-            console.error('Error generating proof:', error);
-            alert('Error generating proof');
+            console.error('Error applying to scheme:', error);
+            alert('Error applying to scheme');
         } finally {
             setLoading(false);
         }
     };
 
-    const getCommitment = async () => {
-        // This should match the commitment generation in the backend
-        // For now, we'll fetch it from the user status
-        const response = await fetch(`${API_URL}/api/kyc/user/${userId}`);
-        const data = await response.json();
-        return data.user.commitment;
-    };
-
-    const validateProof = async () => {
-        if (!proofData) return;
-
-        try {
-            const response = await fetch(`${API_URL}/api/kyc/validate-proof`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    nullifier: proofData.publicSignals.nullifier,
-                    schemeId: selectedScheme?.schemeId
-                }),
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                alert('✅ Access Granted! Proof validated successfully.');
-            } else {
-                alert('❌ Access Denied: ' + data.error);
-            }
-        } catch (error) {
-            console.error('Error validating proof:', error);
-            alert('Error validating proof');
-        }
-    };
-
-    if (proofGenerated && proofData) {
+    if (accessGranted) {
         return (
-            <div className="scheme-selector">
-                <div className="proof-success">
-                    <h2>✅ Proof Generated Successfully!</h2>
-                    <p className="success-message">
-                        You have generated a zero-knowledge proof for <strong>{selectedScheme?.schemeName}</strong>
+            <div className="access-granted-view">
+                <div className="access-card">
+                    <div className="access-icon">🎉</div>
+                    <h2>Access Granted!</h2>
+                    <p className="scheme-name">{accessGranted}</p>
+                    <div className="countdown-display">
+                        <div className="countdown-circle">
+                            <span className="countdown-number">{countdown}</span>
+                            <span className="countdown-label">seconds</span>
+                        </div>
+                    </div>
+                    <p className="access-message">
+                        You have temporary access to this scheme.
+                        <br />
+                        Access will expire in {countdown} seconds.
                     </p>
-
-                    <div className="proof-details">
-                        <h3>Proof Details</h3>
-                        <div className="proof-item">
-                            <label>Proof ID:</label>
-                            <code>{proofData.proofId}</code>
-                        </div>
-                        <div className="proof-item">
-                            <label>Nullifier:</label>
-                            <code>{proofData.publicSignals.nullifier}</code>
-                        </div>
-                        <div className="proof-item">
-                            <label>Scheme:</label>
-                            <code>{selectedScheme?.schemeName}</code>
-                        </div>
-                    </div>
-
-                    <div className="proof-info">
-                        <h4>🔐 Privacy Preserved</h4>
-                        <p>Your personal details remain private. The proof only reveals:</p>
-                        <ul>
-                            <li>✅ You are a verified user</li>
-                            <li>✅ You have the required tier ({selectedScheme?.requiredTier})</li>
-                            <li>❌ No personal information disclosed</li>
-                        </ul>
-                    </div>
-
-                    <div className="action-buttons">
-                        <button className="btn-validate" onClick={validateProof}>
-                            Validate Proof & Access Scheme
-                        </button>
-                        <button
-                            className="btn-secondary"
-                            onClick={() => {
-                                setProofGenerated(false);
-                                setProofData(null);
-                                setSelectedScheme(null);
-                            }}
-                        >
-                            Generate Another Proof
-                        </button>
+                    <div className="access-animation">
+                        <div className="pulse-ring"></div>
+                        <div className="pulse-ring delay-1"></div>
+                        <div className="pulse-ring delay-2"></div>
                     </div>
                 </div>
             </div>
@@ -199,48 +157,41 @@ export const SchemeSelector: React.FC<Props> = ({ userId, userSecret, userTier }
 
     return (
         <div className="scheme-selector">
-            <h2>🎯 Select a Scheme</h2>
-            <p className="subtitle">Generate a zero-knowledge proof for scheme access</p>
-
-            {userTier === 0 && (
-                <div className="warning-box">
-                    <p>⚠️ You are not verified yet. Please wait for admin approval.</p>
-                </div>
-            )}
-
-            <div className="schemes-grid">
-                {schemes.map((scheme) => (
-                    <div
-                        key={scheme._id}
-                        className={`scheme-card ${selectedScheme?._id === scheme._id ? 'selected' : ''} ${scheme.requiredTier > userTier ? 'disabled' : ''}`}
-                        onClick={() => scheme.requiredTier <= userTier && setSelectedScheme(scheme)}
-                    >
-                        <div className="scheme-header">
-                            <h3>{scheme.schemeName}</h3>
-                            <span className={`tier-badge tier-${scheme.requiredTier}`}>
-                                Tier {scheme.requiredTier}
-                            </span>
-                        </div>
-                        <p className="scheme-description">{scheme.description}</p>
-                        {scheme.requiredTier > userTier && (
-                            <div className="locked-overlay">
-                                <span>🔒 Requires Tier {scheme.requiredTier}</span>
-                            </div>
-                        )}
-                    </div>
-                ))}
+            <div className="selector-header">
+                <h2>📋 Available Schemes</h2>
+                <p>Select a scheme to generate proof and gain access</p>
             </div>
 
-            {selectedScheme && (
-                <div className="selected-scheme-actions">
-                    <h3>Selected: {selectedScheme.schemeName}</h3>
-                    <button
-                        className="btn-generate"
-                        onClick={generateProof}
-                        disabled={loading}
-                    >
-                        {loading ? 'Generating Proof...' : 'Generate ZK Proof'}
-                    </button>
+            {loading ? (
+                <div className="loading">Loading schemes...</div>
+            ) : schemes.length === 0 ? (
+                <div className="no-schemes">
+                    <p>❌ No schemes available for your account</p>
+                    <p className="hint">Contact admin for scheme approval</p>
+                </div>
+            ) : (
+                <div className="schemes-grid">
+                    {schemes.map((scheme) => (
+                        <div key={scheme._id} className="scheme-card">
+                            <div className="scheme-header">
+                                <h3>{scheme.schemeName}</h3>
+                                <span className={`tier-badge tier-${scheme.requiredTier}`}>
+                                    Tier {scheme.requiredTier}
+                                </span>
+                            </div>
+                            <p className="scheme-description">{scheme.description}</p>
+                            <p className="eligibility-info">
+                                ✅ {scheme.eligibilityCriteria.description}
+                            </p>
+                            <button
+                                className="btn-apply"
+                                onClick={() => handleApplyToScheme(scheme)}
+                                disabled={loading}
+                            >
+                                {loading ? 'Processing...' : 'Apply to Scheme'}
+                            </button>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
