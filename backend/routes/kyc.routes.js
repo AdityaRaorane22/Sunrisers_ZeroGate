@@ -26,7 +26,7 @@ router.post('/submit', async (req, res) => {
         }
 
         // Generate commitment
-        const commitment = proofService.generateCommitment(userId, secret);
+        const commitment = await proofService.generateCommitment(userId, secret);
 
         // Hash document number for privacy
         const documentHash = crypto.createHash('sha256')

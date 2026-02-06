@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import apiService, { Scheme } from '../services/api.service';
+import apiService from '../services/api.service';
+import type { Scheme } from '../services/api.service';
 import ProofGenerator from './ProofGenerator';
 
 const SchemeApply: React.FC = () => {
@@ -12,7 +13,7 @@ const SchemeApply: React.FC = () => {
 
   const checkKYCStatus = async () => {
     if (!userId) return;
-    
+
     setLoading(true);
     setError('');
 
@@ -158,7 +159,7 @@ const SchemeApply: React.FC = () => {
 
           <div>
             <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px' }}>Your Eligible Schemes</h3>
-            
+
             {kycStatus.eligibleSchemes.length === 0 ? (
               <p style={{ color: '#6b7280' }}>No schemes available for your profile.</p>
             ) : (
@@ -169,7 +170,7 @@ const SchemeApply: React.FC = () => {
                       <h4 style={{ fontWeight: '600', fontSize: '18px' }}>{scheme.name}</h4>
                       <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '4px' }}>{scheme.description}</p>
                     </div>
-                    
+
                     <button
                       onClick={() => setSelectedScheme(scheme._id)}
                       style={{
@@ -213,7 +214,7 @@ const SchemeApply: React.FC = () => {
                   ✕
                 </button>
               </div>
-              
+
               <ProofGenerator
                 userId={userId}
                 schemeId={selectedScheme}

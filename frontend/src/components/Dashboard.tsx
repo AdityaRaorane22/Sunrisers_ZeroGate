@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import apiService, { Scheme } from '../services/api.service';
+import apiService from '../services/api.service';
+import type { Scheme } from '../services/api.service';
 
 const Dashboard: React.FC = () => {
   const [schemes, setSchemes] = useState<Scheme[]>([]);
@@ -153,7 +154,7 @@ const Dashboard: React.FC = () => {
                 <h3 style={styles.cardTitle}>{scheme.name}</h3>
                 <p style={styles.cardDescription}>{scheme.description}</p>
               </div>
-              
+
               <div style={styles.statsContainer}>
                 <div style={styles.statItem}>
                   <p>Eligible Users: <strong style={{ color: '#059669' }}>{scheme.totalEligible}</strong></p>
