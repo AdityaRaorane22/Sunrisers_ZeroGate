@@ -3,7 +3,7 @@ import { buildPoseidon } from 'circomlibjs';
 class PrivacyMerkleTree {
     constructor(options = {}) {
         // Dynamic depth: calculate based on expected max leaves
-        // Default to 10 (supports up to 1024 leaves) instead of 20 (1M leaves)
+        // Default to 10 (supports up to 1024 leaves) 
         this.maxLeaves = options.maxLeaves || 1024;
         this.depth = options.depth || Math.ceil(Math.log2(this.maxLeaves));
 

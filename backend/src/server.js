@@ -14,10 +14,56 @@ const commitments = new Map(); // Store tier/info by commitment
 // Supports up to 1024 users by default (depth 10)
 // Can be increased via maxLeaves option
 const defaultTree = new PrivacyMerkleTree({
-    maxLeaves: 1024,  // Adjust based on expected user count
-    depth: 10         // Much faster than depth 20 (1M capacity)
+    maxLeaves: 1024,
+    depth: 10
 });
 trees.set('default', defaultTree);
+
+const proofGenerator = new ZKProofGenerator(defaultTree);
+
+app.post('/api/verify-access', async (req, res) => {
+    try {
+        const { proof, publicSignals, requiredTier } = req.body;
+
+        if (!proof || !publicSignals || !requiredTier) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        console.log(`🔐 Verifying proof for Tier ${requiredTier}...`);
+        console.log('Received Proof:', JSON.stringify(proof, null, 2));
+        console.log('Received Public Signals:', JSON.stringify(publicSignals, null, 2));
+
+        // Functional Verification
+        // 1. Verify ZK Proof validity
+        const isValid = await proofGenerator.verifyProofLocally(proof, publicSignals);
+
+        if (!isValid) {
+            console.error("❌ Invalid ZK Proof");
+            return res.status(401).json({ success: false, error: 'Invalid ZK Proof' });
+        }
+
+        // 2. Check Tier Requirement (Public Signal 4 is requiredTier)
+        const proofTier = parseInt(publicSignals.requiredTier);
+        if (proofTier < requiredTier) {
+            console.error(`❌ Insufficient Tier: Proof is for ${proofTier}, but ${requiredTier} is required`);
+            return res.status(403).json({ success: false, error: 'Insufficient Tier access' });
+        }
+
+        // 3. Check Merkle Root
+        const currentRoot = await defaultTree.getRoot();
+        if (publicSignals.root !== currentRoot) {
+            console.warn(`⚠️ Proof root (${publicSignals.root}) differs from current root (${currentRoot}). Proof might be from an older state.`);
+            // In a production app, we'd check if it's a recent root (e.g., last 10 roots)
+        }
+
+        console.log("✅ Proof Verified Successfully!");
+        res.json({ success: true });
+
+    } catch (error) {
+        console.error('Verify Access error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.post('/api/register', async (req, res) => {
     try {

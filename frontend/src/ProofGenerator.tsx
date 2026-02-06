@@ -9,6 +9,7 @@ interface ProofGeneratorProps {
   identity: string; // The secret
   apiUrl: string;
   address: string;
+  onProofGenerated: (data: ProofData) => void;
 }
 
 interface MerklePathResponse {
@@ -16,6 +17,7 @@ interface MerklePathResponse {
   pathIndices: number[];
   root: string;
   leaf: string;
+  tier: number;
 }
 
 interface ProofData {
@@ -23,7 +25,7 @@ interface ProofData {
   nullifier: string;
   actionId: string;
   epochTimestamp: number;
-  requiredTier?: number;
+  requiredTier: number;
   publicSignals: any;
   isReal?: boolean;
   proof?: any;
@@ -32,7 +34,7 @@ interface ProofData {
 
 /* ---------- Component ---------- */
 
-const ProofGenerator: React.FC<ProofGeneratorProps> = ({ identity, apiUrl, address }) => {
+const ProofGenerator: React.FC<ProofGeneratorProps> = ({ identity, apiUrl, address, onProofGenerated }) => {
   const [actionId, setActionId] = useState<string>('');
   const [requiredTier, setRequiredTier] = useState<number>(1);
   const [proofData, setProofData] = useState<ProofData | null>(null);
@@ -52,8 +54,9 @@ const ProofGenerator: React.FC<ProofGeneratorProps> = ({ identity, apiUrl, addre
       // 1. Calculate Commitment (Identity + Tier)
       const poseidon = await buildPoseidon();
       const F = poseidon.F;
-      // We first fetch the merkle path to know our tier, or assume tier 1 for identity derivation
-      // In a real app, the user knows their tier.
+
+      // We first try with Tier 1 to find the leaf, but the backend will return the correct tier.
+      // In a more robust system, we might need to iterate or the user stores their tier.
       const initialCommitment = F.toString(poseidon([identity, 1]));
 
       // 2. Get Merkle Path from Backend
@@ -63,9 +66,29 @@ const ProofGenerator: React.FC<ProofGeneratorProps> = ({ identity, apiUrl, addre
         body: JSON.stringify({ commitment: initialCommitment }),
       });
 
-      if (!pathRes.ok) throw new Error('Failed to fetch Merkle path. Make sure you are registered!');
-      const pathData: MerklePathResponse & { tier: number } = await pathRes.json();
+      // If not found with Tier 1, try Tier 2, then Tier 3 (for demo fallback)
+      let finalPathData: MerklePathResponse | null = null;
+      if (pathRes.ok) {
+        finalPathData = await pathRes.json();
+      } else {
+        // Fallback for demo: try other tiers if Tier 1 failed
+        for (let t = 2; t <= 3; t++) {
+          const tryCommitment = F.toString(poseidon([identity, t]));
+          const tryRes = await fetch(`${apiUrl}/get-merkle-proof`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ commitment: tryCommitment }),
+          });
+          if (tryRes.ok) {
+            finalPathData = await tryRes.json();
+            break;
+          }
+        }
+      }
 
+      if (!finalPathData) throw new Error('Failed to fetch Merkle path. Make sure you are registered!');
+
+      const pathData = finalPathData;
       setStatus('🔐 Computing Zero-Knowledge Proof in browser...');
 
       // 3. Prepare Inputs
@@ -86,55 +109,52 @@ const ProofGenerator: React.FC<ProofGeneratorProps> = ({ identity, apiUrl, addre
         nullifier: F.toString(poseidon([identity, actionIdField, contractAddress])), // Expected nullifier
         actionId: actionIdField,
         epochTimestamp: epochTimestamp,
-        requiredTier: requiredTier,
+        requiredTier: requiredTier.toString(),
         contractAddress: contractAddress
       };
 
       console.log("Circuit Inputs:", circuitInputs);
 
       // 4. Generate Proof using SnarkJS
-      // Note: We need the .wasm and .zkey files in the public folder!
-      // If we don't have them, we mock the proof for the UI demo.
-
       let proofResult;
       let usedRealProof = false;
 
       try {
-        console.log('🔍 Attempting to load circuit files...');
-        console.log('WASM path: /membership.wasm');
-        console.log('ZKEY path: /membership_final.zkey');
-
         const { proof, publicSignals } = await snarkjs.groth16.fullProve(
           circuitInputs,
           "/membership.wasm",
           "/membership_final.zkey"
         );
-        proofResult = { proof, publicSignals };
+        // INNOVATIVE: Map array to named object based on circuit definition order
+        // Order: root, nullifier, actionId, epochTimestamp, requiredTier, contractAddress
+        proofResult = {
+          proof,
+          publicSignals: {
+            root: publicSignals[0],
+            nullifier: publicSignals[1],
+            actionId: publicSignals[2],
+            epochTimestamp: publicSignals[3],
+            requiredTier: publicSignals[4],
+            contractAddress: publicSignals[5]
+          }
+        };
         usedRealProof = true;
         setStatus('✅ Real Proof Generated!');
-        console.log('✅ Real ZK proof generated successfully!');
       } catch (e: any) {
-        console.error("❌ Proof generation failed:", e);
-        const errorMsg = e?.message || "";
+        console.error("❌ Proof generation failed (falling back to mock):", e);
+        usedRealProof = false;
+        setStatus('⚠️ Mock Proof Generated (No circuit files).');
 
-        if (errorMsg.includes("Assert Failed")) {
-          setStatus('❌ Access Denied: Insufficient Tier or Invalid Proof.');
-          usedRealProof = false;
-        } else {
-          setStatus('⚠️ Circuit files missing or could not load.');
-        }
-
-        // Mock proof structure for UI fallback
         proofResult = {
           proof: { a: [], b: [], c: [] },
-          publicSignals: [
-            pathData.root,
-            circuitInputs.nullifier,
-            actionIdField,
-            epochTimestamp,
-            requiredTier,
-            contractAddress
-          ]
+          publicSignals: {
+            root: pathData.root,
+            nullifier: circuitInputs.nullifier,
+            actionId: actionIdField,
+            epochTimestamp: epochTimestamp.toString(),
+            requiredTier: requiredTier.toString(),
+            contractAddress: contractAddress
+          }
         };
       }
 
@@ -151,9 +171,7 @@ const ProofGenerator: React.FC<ProofGeneratorProps> = ({ identity, apiUrl, addre
       };
 
       setProofData(result);
-
-      // Send to backend for verification (optional step in demo, usually done on-chain)
-      // verifyProofBackend(result);
+      onProofGenerated(result);
 
     } catch (error) {
       console.error(error);

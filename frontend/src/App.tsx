@@ -20,6 +20,7 @@ interface RegisterResponse {
   commitment: string;
   index: number;
   root: string;
+  tier: number;
 }
 
 declare global {
@@ -43,6 +44,8 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'register' | 'proof' | 'verify'>('register');
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [selectedTier, setSelectedTier] = useState<number>(1);
+  const [proofData, setProofData] = useState<any | null>(null);
 
   useEffect(() => {
     fetchStats();
@@ -102,11 +105,6 @@ const App: React.FC = () => {
       // We sign a constant message to get a deterministic signature which becomes our secret
       const signature = await signer.signMessage("Sign this message to derive your ZeroGate Identity. This signature will be your secret key.");
 
-      // Hash the signature to get a scalar field element (simplification for demo)
-      // Actual implementation would need to clamp to field size
-      const poseidon = await buildPoseidon();
-      const F = poseidon.F;
-
       // Use BigInt from signature hash
       const signatureBigInt = BigInt(ethers.keccak256(signature));
       const identityScalar = signatureBigInt % BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
@@ -148,9 +146,7 @@ const App: React.FC = () => {
       setTimeout(() => setLoadingMessage('🌳 Generating trusted commitment...'), 800);
 
       // Generate Commitment on Client Side! (Identity + Tier)
-      // Tier is hardcoded to 1 for this demo
-      const tier = 1;
-      const commitmentHash = poseidon([currentIdentity, tier]);
+      const commitmentHash = poseidon([currentIdentity, selectedTier]);
       const commitment = F.toString(commitmentHash);
 
       setTimeout(() => setLoadingMessage('📝 Submitting anonymously to Merkle tree...'), 1800);
@@ -161,7 +157,7 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           commitment,
-          tier
+          tier: selectedTier
         }),
       });
 
@@ -255,6 +251,31 @@ const App: React.FC = () => {
               ) : (
                 <>
                   <p className="status-text">Wallet Connected: {address}</p>
+
+                  <div className="input-group" style={{ width: '100%', marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                      Choose your access tier:
+                    </label>
+                    <select
+                      value={selectedTier}
+                      onChange={(e) => setSelectedTier(Number(e.target.value))}
+                      disabled={registered}
+                      className="tier-select"
+                      style={{
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: '2px solid #667eea',
+                        width: '100%',
+                        fontSize: '16px',
+                        background: 'white'
+                      }}
+                    >
+                      <option value={1}>🟢 Tier 1 - Basic</option>
+                      <option value={2}>🟡 Tier 2 - Premium</option>
+                      <option value={3}>🔴 Tier 3 - Admin</option>
+                    </select>
+                  </div>
+
                   <button onClick={handleRegister} disabled={registered || loading} className="primary-btn">
                     {loading ? '⏳ Processing...' : registered ? '✓ Registered' : '📝 Sign & Register'}
                   </button>
@@ -278,6 +299,9 @@ const App: React.FC = () => {
                   <code className="break-all">{userData.commitment}</code>
                 </p>
                 <p>
+                  <strong>Assigned Tier:</strong> <span className={`tier-badge tier-${userData.tier}`}>Tier {userData.tier}</span>
+                </p>
+                <p>
                   <strong>Tree Index:</strong> {userData.index}
                 </p>
               </div>
@@ -290,11 +314,15 @@ const App: React.FC = () => {
             identity={identity}
             apiUrl={API_URL}
             address={address} // Pass address for context, not for proof
+            onProofGenerated={(data) => {
+              setProofData(data);
+              setActiveTab('verify');
+            }}
           />
         )}
 
         {activeTab === 'verify' && (
-          <AccessDemo apiUrl={API_URL} />
+          <AccessDemo apiUrl={API_URL} proofData={proofData} />
         )}
       </div>
 
