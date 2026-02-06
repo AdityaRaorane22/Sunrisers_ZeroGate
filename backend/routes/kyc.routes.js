@@ -48,11 +48,14 @@ router.post('/submit', async (req, res) => {
 
         await kyc.save();
 
+        // Convert commitment to hex string for frontend
+        const commitmentHex = '0x' + Buffer.from(commitment).toString('hex');
+
         res.json({
             success: true,
             message: 'KYC submitted successfully',
-            commitment,
-            kycId: kyc._id
+            kycId: kyc._id,
+            commitment: commitmentHex
         });
     } catch (error) {
         console.error('KYC submission error:', error);
