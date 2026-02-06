@@ -1,333 +1,181 @@
-import React, { useState, useEffect } from 'react';
-import ProofGenerator from './ProofGenerator';
-import AccessDemo from './AccessDemo';
-import { ethers } from 'ethers';
-import { buildPoseidon } from 'circomlibjs';
+import React, { useState } from 'react';
+import { KYCRegistration } from './components/KYCRegistration';
+import { AdminDashboard } from './components/AdminDashboard';
+import { UserStatus } from './components/UserStatus';
+import { SchemeSelector } from './components/SchemeSelector';
 import './App.css';
 
-const API_URL = 'http://localhost:3001/api';
-
-/* ---------- Types ---------- */
-
-interface Stats {
-  totalUsers: number;
-  gasPerProof: number;
-  provingTime: number;
-}
-
-interface RegisterResponse {
-  success: boolean;
-  commitment: string;
-  index: number;
-  root: string;
-  tier: number;
-}
-
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
-
-/* ---------- Component ---------- */
+type View = 'home' | 'register' | 'admin' | 'status' | 'schemes';
 
 const App: React.FC = () => {
-  // Wallet State
-  const [address, setAddress] = useState<string>('');
-  const [identity, setIdentity] = useState<string>(''); // Secret 
-  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(false);
+  const [currentView, setCurrentView] = useState<View>('home');
+  const [userId, setUserId] = useState('');
+  const [userSecret, setUserSecret] = useState('');
+  const [userTier, setUserTier] = useState(0);
 
-  // App State
-  const [registered, setRegistered] = useState<boolean>(false);
-  const [userData, setUserData] = useState<RegisterResponse | null>(null);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [activeTab, setActiveTab] = useState<'register' | 'proof' | 'verify'>('register');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [selectedTier, setSelectedTier] = useState<number>(1);
-  const [proofData, setProofData] = useState<any | null>(null);
-
-  useEffect(() => {
-    fetchStats();
-    checkWalletConnection();
-  }, []);
-
-  const fetchStats = async (): Promise<void> => {
-    try {
-      const res = await fetch(`${API_URL}/stats`);
-      const data: Stats = await res.json();
-      setStats(data);
-    } catch (error) {
-      console.error('Stats fetch failed:', error);
-    }
+  const handleProofGeneration = (id: string, secret: string, tier: number) => {
+    setUserId(id);
+    setUserSecret(secret);
+    setUserTier(tier);
+    setCurrentView('schemes');
   };
 
-  const checkWalletConnection = async () => {
-    if (window.ethereum) {
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const accounts = await provider.listAccounts();
-        if (accounts.length > 0) {
-          setAddress(accounts[0].address);
-          setIsWalletConnected(true);
-        }
-      } catch (err) {
-        console.error("Wallet check failed", err);
-      }
-    }
-  };
+  const renderView = () => {
+    switch (currentView) {
+      case 'register':
+        return <KYCRegistration />;
+      case 'admin':
+        return <AdminDashboard />;
+      case 'status':
+        return (
+          <div className="status-container">
+            <div className="user-id-input">
+              <h3>Enter Your User ID</h3>
+              <input
+                type="text"
+                placeholder="USER_xxxxx"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                className="input-field"
+              />
+              {userId && <UserStatus userId={userId} onProofGeneration={handleProofGeneration} />}
+            </div>
+          </div>
+        );
+      case 'schemes':
+        return userId && userSecret && userTier > 0 ? (
+          <SchemeSelector userId={userId} userSecret={userSecret} userTier={userTier} />
+        ) : (
+          <div className="error-view">
+            <p>Please check your status first and enter your secret.</p>
+            <button onClick={() => setCurrentView('status')}>Go to Status</button>
+          </div>
+        );
+      default:
+        return (
+          <div className="home-view">
+            <div className="hero-section">
+              <h1 className="hero-title">🔐 ZeroGate KYC System</h1>
+              <p className="hero-subtitle">Privacy-Preserving KYC Validation & Verification</p>
 
-  const connectWallet = async () => {
-    if (!window.ethereum) {
-      alert("Please install MetaMask!");
-      return;
-    }
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.send("eth_requestAccounts", []);
-      setAddress(accounts[0]);
-      setIsWalletConnected(true);
-    } catch (err) {
-      console.error("Connection failed", err);
-    }
-  };
+              <div className="workflow-diagram">
+                <div className="workflow-step">
+                  <div className="step-number">1</div>
+                  <h3>User Registration</h3>
+                  <p>Register with personal details and receive your commitment key</p>
+                </div>
+                <div className="workflow-arrow">→</div>
+                <div className="workflow-step">
+                  <div className="step-number">2</div>
+                  <h3>Admin Verification</h3>
+                  <p>DAO admin reviews and approves/rejects your application</p>
+                </div>
+                <div className="workflow-arrow">→</div>
+                <div className="workflow-step">
+                  <div className="step-number">3</div>
+                  <h3>Proof Generation</h3>
+                  <p>Generate ZK proofs for schemes without revealing details</p>
+                </div>
+              </div>
 
-  const deriveIdentity = async (): Promise<string | null> => {
-    if (!window.ethereum) return null;
+              <div className="action-cards">
+                <div className="action-card user-card" onClick={() => setCurrentView('register')}>
+                  <div className="card-icon">👤</div>
+                  <h3>User Portal</h3>
+                  <p>Register and get verified</p>
+                  <button className="card-btn">Register Now</button>
+                </div>
 
-    try {
-      setLoading(true);
-      setLoadingMessage('✍️ Please sign the message to derive your secret identity...');
+                <div className="action-card admin-card" onClick={() => setCurrentView('admin')}>
+                  <div className="card-icon">👨‍💼</div>
+                  <h3>Admin Portal</h3>
+                  <p>Verify user applications</p>
+                  <button className="card-btn">Admin Dashboard</button>
+                </div>
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
+                <div className="action-card status-card" onClick={() => setCurrentView('status')}>
+                  <div className="card-icon">📊</div>
+                  <h3>Check Status</h3>
+                  <p>View verification status</p>
+                  <button className="card-btn">View Status</button>
+                </div>
+              </div>
 
-      // We sign a constant message to get a deterministic signature which becomes our secret
-      const signature = await signer.signMessage("Sign this message to derive your ZeroGate Identity. This signature will be your secret key.");
-
-      // Use BigInt from signature hash
-      const signatureBigInt = BigInt(ethers.keccak256(signature));
-      const identityScalar = signatureBigInt % BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
-
-      const idString = identityScalar.toString();
-      setIdentity(idString);
-      return idString;
-
-    } catch (err) {
-      console.error("Identity derivation failed", err);
-      return null;
-    } finally {
-      setLoading(false);
-      setLoadingMessage('');
-    }
-  };
-
-  const handleRegister = async (): Promise<void> => {
-    if (!isWalletConnected) {
-      alert('Please connect wallet first');
-      return;
-    }
-
-    let currentIdentity = identity;
-    if (!currentIdentity) {
-      const derived = await deriveIdentity();
-      if (!derived) return;
-      currentIdentity = derived;
-    }
-
-    setLoading(true);
-    setLoadingMessage('🔐 Initializing Poseidon hash function...');
-
-    try {
-      const poseidon = await buildPoseidon();
-      const F = poseidon.F;
-
-      // Show progress messages
-      setTimeout(() => setLoadingMessage('🌳 Generating trusted commitment...'), 800);
-
-      // Generate Commitment on Client Side! (Identity + Tier)
-      const commitmentHash = poseidon([currentIdentity, selectedTier]);
-      const commitment = F.toString(commitmentHash);
-
-      setTimeout(() => setLoadingMessage('📝 Submitting anonymously to Merkle tree...'), 1800);
-
-      // Send ONLY the commitment to the backend. Identity stays in browser.
-      const res = await fetch(`${API_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commitment,
-          tier: selectedTier
-        }),
-      });
-
-      const data: RegisterResponse = await res.json();
-
-      if (data.success) {
-        setLoadingMessage('✅ Registration complete!');
-        setTimeout(() => {
-          setUserData(data);
-          setRegistered(true);
-          setActiveTab('proof');
-          fetchStats();
-          setLoadingMessage('');
-          setLoading(false);
-        }, 500);
-      }
-    } catch (error) {
-      setLoadingMessage('');
-      setLoading(false);
-      alert('Registration failed: ' + (error as Error).message);
+              <div className="features-section">
+                <h2>Key Features</h2>
+                <div className="features-grid">
+                  <div className="feature">
+                    <span className="feature-icon">🔒</span>
+                    <h4>Privacy-Preserving</h4>
+                    <p>Zero-knowledge proofs ensure complete anonymity</p>
+                  </div>
+                  <div className="feature">
+                    <span className="feature-icon">🎯</span>
+                    <h4>Tiered Access</h4>
+                    <p>Multi-level verification for different schemes</p>
+                  </div>
+                  <div className="feature">
+                    <span className="feature-icon">⚡</span>
+                    <h4>Fast Verification</h4>
+                    <p>Instant proof generation and validation</p>
+                  </div>
+                  <div className="feature">
+                    <span className="feature-icon">🌐</span>
+                    <h4>Decentralized</h4>
+                    <p>No central authority stores your data</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
     }
   };
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>🔐 ZeroGate</h1>
-        <p>Privacy-Preserving Access Control</p>
-        <div className="wallet-connect">
-          {isWalletConnected ? (
-            <span className="badge">🟢 {address.slice(0, 6)}...{address.slice(-4)}</span>
-          ) : (
-            <button onClick={connectWallet} className="connect-btn">Connect Wallet</button>
-          )}
+      <header className="app-header">
+        <div className="header-content">
+          <div className="logo" onClick={() => setCurrentView('home')}>
+            <span className="logo-icon">🔐</span>
+            <span className="logo-text">ZeroGate KYC</span>
+          </div>
+          <nav className="nav-menu">
+            <button
+              className={currentView === 'home' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentView('home')}
+            >
+              Home
+            </button>
+            <button
+              className={currentView === 'register' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentView('register')}
+            >
+              Register
+            </button>
+            <button
+              className={currentView === 'admin' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentView('admin')}
+            >
+              Admin
+            </button>
+            <button
+              className={currentView === 'status' ? 'nav-btn active' : 'nav-btn'}
+              onClick={() => setCurrentView('status')}
+            >
+              Status
+            </button>
+          </nav>
         </div>
       </header>
 
-      {stats && (
-        <div className="stats-bar">
-          <div className="stat">
-            <span className="stat-value">{stats.totalUsers}</span>
-            <span className="stat-label">Users</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{stats.gasPerProof}</span>
-            <span className="stat-label">Gas/Proof</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{stats.provingTime}</span>
-            <span className="stat-label">Proving Time</span>
-          </div>
-        </div>
-      )}
+      <main className="app-main">
+        {renderView()}
+      </main>
 
-      <div className="tabs">
-        <button
-          className={activeTab === 'register' ? 'active' : ''}
-          onClick={() => setActiveTab('register')}
-        >
-          1. Register (Identity)
-        </button>
-
-        <button
-          className={activeTab === 'proof' ? 'active' : ''}
-          onClick={() => setActiveTab('proof')}
-          disabled={!registered}
-        >
-          2. Generate Proof (ZK)
-        </button>
-
-        <button
-          className={activeTab === 'verify' ? 'active' : ''}
-          onClick={() => setActiveTab('verify')}
-          disabled={!registered}
-        >
-          3. Verify Access
-        </button>
-      </div>
-
-      <div className="content">
-        {activeTab === 'register' && (
-          <div className="panel">
-            <h2>Register Identity</h2>
-            <p className="info">
-              Sign a message to generate your secret identity. only the public commitment is stored on-chain.
-            </p>
-
-            <div className="input-group center-col">
-              {!isWalletConnected ? (
-                <button onClick={connectWallet} className="primary-btn">Connect Wallet to Start</button>
-              ) : (
-                <>
-                  <p className="status-text">Wallet Connected: {address}</p>
-
-                  <div className="input-group" style={{ width: '100%', marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                      Choose your access tier:
-                    </label>
-                    <select
-                      value={selectedTier}
-                      onChange={(e) => setSelectedTier(Number(e.target.value))}
-                      disabled={registered}
-                      className="tier-select"
-                      style={{
-                        padding: '12px',
-                        borderRadius: '8px',
-                        border: '2px solid #667eea',
-                        width: '100%',
-                        fontSize: '16px',
-                        background: 'white'
-                      }}
-                    >
-                      <option value={1}>🟢 Tier 1 - Basic</option>
-                      <option value={2}>🟡 Tier 2 - Premium</option>
-                      <option value={3}>🔴 Tier 3 - Admin</option>
-                    </select>
-                  </div>
-
-                  <button onClick={handleRegister} disabled={registered || loading} className="primary-btn">
-                    {loading ? '⏳ Processing...' : registered ? '✓ Registered' : '📝 Sign & Register'}
-                  </button>
-                </>
-              )}
-
-            </div>
-
-            {loadingMessage && (
-              <div className="loading-box">
-                {loadingMessage}
-              </div>
-            )}
-
-            {userData && (
-              <div className="result">
-                <h3>Identity Secured</h3>
-                <p className="secret-warning">⚠️ Your Identity Secret is derived from your wallet signature. Do not change wallets!</p>
-                <p>
-                  <strong>Public Commitment:</strong><br />
-                  <code className="break-all">{userData.commitment}</code>
-                </p>
-                <p>
-                  <strong>Assigned Tier:</strong> <span className={`tier-badge tier-${userData.tier}`}>Tier {userData.tier}</span>
-                </p>
-                <p>
-                  <strong>Tree Index:</strong> {userData.index}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'proof' && (
-          <ProofGenerator
-            identity={identity}
-            apiUrl={API_URL}
-            address={address} // Pass address for context, not for proof
-            onProofGenerated={(data) => {
-              setProofData(data);
-              setActiveTab('verify');
-            }}
-          />
-        )}
-
-        {activeTab === 'verify' && (
-          <AccessDemo apiUrl={API_URL} proofData={proofData} />
-        )}
-      </div>
-
-      <footer className="footer">
-        <p>Zero-Knowledge Proofs • Merkle Trees • Anonymous Verification</p>
+      <footer className="app-footer">
+        <p>Built with Zero-Knowledge Proofs • MongoDB • React • Express</p>
+        <p>Privacy-Preserving KYC Validation System</p>
       </footer>
     </div>
   );

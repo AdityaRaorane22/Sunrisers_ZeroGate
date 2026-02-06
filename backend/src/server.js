@@ -2,10 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import { PrivacyMerkleTree } from './merkleTree.js';
 import { ZKProofGenerator } from './proofGenerator.js';
+import { connectDB } from './config/database.js';
+import kycRoutes from './routes/kycRoutes.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Connect to MongoDB
+connectDB();
 
 const trees = new Map();
 const commitments = new Map(); // Store tier/info by commitment
@@ -20,6 +25,11 @@ const defaultTree = new PrivacyMerkleTree({
 trees.set('default', defaultTree);
 
 const proofGenerator = new ZKProofGenerator(defaultTree);
+
+// KYC Routes
+app.use('/api/kyc', kycRoutes);
+
+// Original ZK Proof Routes
 
 app.post('/api/verify-access', async (req, res) => {
     try {
