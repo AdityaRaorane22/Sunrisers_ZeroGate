@@ -1,16 +1,27 @@
-const { poseidon } = require('circomlibjs');
+const { buildPoseidon } = require('circomlibjs');
 const KYC = require('../models/KYC');
 const Scheme = require('../models/Scheme');
+
+let poseidon;
 
 class MerkleTreeService {
     constructor(depth = 20) {
         this.depth = depth;
         this.zero = BigInt(0);
-        this.zeroHashes = this.generateZeroHashes();
+        this.zeroHashes = null;
+        this.initialized = false;
+    }
+
+    async initialize() {
+        if (!this.initialized) {
+            poseidon = await buildPoseidon();
+            this.zeroHashes = await this.generateZeroHashes();
+            this.initialized = true;
+        }
     }
 
     // Generate zero hashes for empty nodes
-    generateZeroHashes() {
+    async generateZeroHashes() {
         const hashes = [this.zero];
         for (let i = 1; i <= this.depth; i++) {
             hashes.push(poseidon([hashes[i - 1], hashes[i - 1]]));
@@ -25,6 +36,7 @@ class MerkleTreeService {
 
     // Build Merkle tree from commitments
     async buildTree(commitments) {
+        await this.initialize();
         const leaves = commitments.map(c => BigInt(c));
         let currentLevel = [...leaves];
 
@@ -93,6 +105,7 @@ class MerkleTreeService {
 
     // Update tree for a scheme with eligible users
     async updateSchemeTree(schemeId) {
+        await this.initialize();
         const scheme = await Scheme.findById(schemeId);
         if (!scheme) throw new Error('Scheme not found');
 

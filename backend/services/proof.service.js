@@ -1,12 +1,21 @@
-const { poseidon } = require('circomlibjs');
+const { buildPoseidon } = require('circomlibjs');
 const crypto = require('crypto');
 const merkleTreeService = require('./merkleTree.service');
 const KYC = require('../models/KYC');
 const Scheme = require('../models/Scheme');
 
+let poseidon;
+
 class ProofService {
+    async initialize() {
+        if (!poseidon) {
+            poseidon = await buildPoseidon();
+        }
+    }
+
     // Generate commitment for KYC
-    generateCommitment(userId, secret) {
+    async generateCommitment(userId, secret) {
+        await this.initialize();
         const userIdHash = BigInt('0x' + crypto.createHash('sha256')
             .update(userId)
             .digest('hex'));
@@ -18,7 +27,8 @@ class ProofService {
     }
 
     // Generate nullifier (unique per action)
-    generateNullifier(commitment, actionId) {
+    async generateNullifier(commitment, actionId) {
+        await this.initialize();
         const commitmentBigInt = BigInt(commitment);
         const actionHash = BigInt('0x' + crypto.createHash('sha256')
             .update(actionId)
