@@ -1,12 +1,24 @@
 {
   "name": "contracts",
   "version": "1.0.0",
-  "description": "",
+  "description": "ZeroGate KYC Smart Contracts",
   "main": "deploy.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "deploy": "hardhat run deploy.js --network sepolia",
+    "deploy:local": "hardhat run deploy.js --network localhost",
+    "test": "hardhat test"
   },
-  "keywords": [],
+  "keywords": [
+    "zkp",
+    "kyc",
+    "ethereum"
+  ],
   "author": "",
-  "license": "ISC"
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.3.1"
+  }
 }

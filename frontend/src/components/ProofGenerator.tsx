@@ -212,7 +212,7 @@ const ProofGenerator: React.FC<ProofGeneratorProps> = ({ userId, schemeId, schem
             <p><strong>Transaction Hash:</strong></p>
             <code style={{ ...styles.codeBlock, fontSize: '11px' }}>{result.txHash}</code>
             <p style={{ marginTop: '12px' }}><strong>Block Number:</strong> {result.blockNumber}</p>
-            
+            <a
               href={`https://sepolia.etherscan.io/tx/${result.txHash}`}
               target="_blank"
               rel="noopener noreferrer"
