@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { generateZKProof, generateNullifier } from '../utils/zkProof';
 import './SchemeSelector.css';
 
 const API_URL = 'http://localhost:3001';
@@ -25,6 +26,7 @@ export const SchemeSelector: React.FC<SchemeSelectorProps> = ({ userId, userSecr
     const [loading, setLoading] = useState(false);
     const [accessGranted, setAccessGranted] = useState<string | null>(null);
     const [countdown, setCountdown] = useState(60);
+    const [proofGenerating, setProofGenerating] = useState(false);
 
     useEffect(() => {
         fetchSchemes();
@@ -62,67 +64,92 @@ export const SchemeSelector: React.FC<SchemeSelectorProps> = ({ userId, userSecr
     };
 
     const handleApplyToScheme = async (scheme: Scheme) => {
+        setProofGenerating(true);
         setLoading(true);
+
         try {
-            // Generate mock proof (in production, use real ZK proof generation)
-            const mockProof = {
-                pi_a: ["123", "456", "1"],
-                pi_b: [["789", "012"], ["345", "678"], ["1", "0"]],
-                pi_c: ["901", "234", "1"],
-                protocol: "groth16",
-                curve: "bn128"
-            };
+            console.log('🚀 Starting ZK proof generation...');
 
-            const mockPublicSignals = {
-                commitment: "mock_commitment",
-                schemeId: scheme.schemeId
-            };
+            // Step 1: Get Merkle proof from backend
+            console.log('📡 Fetching Merkle proof from backend...');
+            const merkleResponse = await fetch(`${API_URL}/api/get-merkle-proof`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    identity: userSecret,
+                    tier: userTier
+                }),
+            });
 
-            const nullifier = `NULLIFIER_${userId}_${scheme.schemeId}_${Date.now()}`;
+            const merkleData = await merkleResponse.json();
+            if (!merkleData.success) {
+                throw new Error('Failed to get Merkle proof: ' + merkleData.error);
+            }
 
-            // Save proof to backend
+            console.log('✅ Merkle proof received:', merkleData);
+
+            // Step 2: Generate ZK proof using snarkjs
+            console.log('🔐 Generating ZK proof with snarkjs...');
+            const zkProof = await generateZKProof({
+                identity: userSecret,
+                tier: userTier,
+                schemeId: scheme.schemeId,
+                pathElements: merkleData.pathElements,
+                pathIndices: merkleData.pathIndices,
+                root: merkleData.root
+            });
+
+            console.log('✅ ZK Proof generated!', zkProof);
+
+            // Step 3: Generate nullifier
+            const nullifier = await generateNullifier(userSecret, scheme.schemeId);
+            console.log('🔑 Nullifier generated:', nullifier);
+
+            // Step 4: Save proof to backend
+            console.log('💾 Saving proof to backend...');
             const saveResponse = await fetch(`${API_URL}/api/kyc/save-proof`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId,
                     schemeId: scheme.schemeId,
-                    proof: mockProof,
-                    publicSignals: mockPublicSignals,
+                    proof: zkProof.proof,
+                    publicSignals: zkProof.publicSignals,
                     nullifier
                 }),
             });
 
             const saveData = await saveResponse.json();
-            if (saveData.success) {
-                // Validate proof for access
-                const validateResponse = await fetch(`${API_URL}/api/kyc/validate-proof`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        nullifier,
-                        schemeId: scheme.schemeId
-                    }),
-                });
+            if (!saveData.success) {
+                throw new Error('Failed to save proof: ' + saveData.error);
+            }
 
-                const validateData = await validateResponse.json();
-                if (validateData.success) {
-                    setAccessGranted(scheme.schemeName);
-                    setCountdown(60);
-                } else {
-                    alert('Proof validation failed: ' + validateData.error);
-                }
+            console.log('✅ Proof saved successfully');
+
+            // Step 5: Validate proof for access
+            console.log('🔓 Validating proof for access...');
+            const validateResponse = await fetch(`${API_URL}/api/kyc/validate-proof`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nullifier,
+                    schemeId: scheme.schemeId
+                }),
+            });
+
+            const validateData = await validateResponse.json();
+            if (validateData.success) {
+                console.log('🎉 Access granted!');
+                setAccessGranted(scheme.schemeName);
+                setCountdown(60);
             } else {
-                alert('Error saving proof: ' + saveData.error);
+                alert('Proof validation failed: ' + validateData.error);
             }
         } catch (error) {
-            console.error('Error applying to scheme:', error);
-            alert('Error applying to scheme');
+            console.error('❌ Error in proof generation flow:', error);
+            alert('Error: ' + (error as Error).message);
         } finally {
+            setProofGenerating(false);
             setLoading(false);
         }
     };
@@ -159,10 +186,16 @@ export const SchemeSelector: React.FC<SchemeSelectorProps> = ({ userId, userSecr
         <div className="scheme-selector">
             <div className="selector-header">
                 <h2>📋 Available Schemes</h2>
-                <p>Select a scheme to generate proof and gain access</p>
+                <p>Select a scheme to generate ZK proof and gain access</p>
+                {proofGenerating && (
+                    <div className="proof-status">
+                        <div className="spinner"></div>
+                        <p>Generating zero-knowledge proof with snarkjs...</p>
+                    </div>
+                )}
             </div>
 
-            {loading ? (
+            {loading && !proofGenerating ? (
                 <div className="loading">Loading schemes...</div>
             ) : schemes.length === 0 ? (
                 <div className="no-schemes">
@@ -186,9 +219,9 @@ export const SchemeSelector: React.FC<SchemeSelectorProps> = ({ userId, userSecr
                             <button
                                 className="btn-apply"
                                 onClick={() => handleApplyToScheme(scheme)}
-                                disabled={loading}
+                                disabled={loading || proofGenerating}
                             >
-                                {loading ? 'Processing...' : 'Apply to Scheme'}
+                                {proofGenerating ? '⏳ Generating Proof...' : 'Apply to Scheme'}
                             </button>
                         </div>
                     ))}
