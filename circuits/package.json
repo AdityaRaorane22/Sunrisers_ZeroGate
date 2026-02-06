@@ -1,0 +1,16 @@
+{
+  "name": "zerogate-circuits",
+  "version": "1.0.0",
+  "description": "Zero-knowledge circuits for ZeroGate privacy-preserving access control",
+  "scripts": {
+    "compile": "bash compile.sh",
+    "test": "node test-circuit.js"
+  },
+  "dependencies": {
+    "circomlib": "^2.0.5",
+    "snarkjs": "^0.7.0"
+  },
+  "devDependencies": {
+    "circom_tester": "^0.0.19"
+  }
+}
